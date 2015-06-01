@@ -6,6 +6,9 @@ php:
   - 5.4
   - 5.5
   - 5.6
+  - nightly
+  - hhvm
+#  - hhvm-nightly   # not supported on ubuntu precise, which is what travis uses...
 
 # optionally specify a list of environments, for example to test different RDBMS
 env:
@@ -28,6 +31,7 @@ script:
 
 # If a failure occured then dump out a bunch of logs for debugging purposes.
 after_failure:
+  - env
   - sudo ls -al
   - sudo ls -al data/config/
   - sudo cat data/config/shimmie.conf.php
