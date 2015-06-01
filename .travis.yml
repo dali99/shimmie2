@@ -11,6 +11,7 @@ php:
 env:
   - DB=mysql
   - DB=pgsql
+  - DB=sqlite
 
 install:
   - mkdir -p data

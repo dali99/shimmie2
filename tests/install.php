@@ -36,6 +36,9 @@ if ($db === "mysql") {
 } elseif ($db === "pgsql") {
 	define("_TRAVIS_DATABASE_USERNAME", "postgres");
 	define("_TRAVIS_DATABASE_PASSWORD", "");
+} elseif ($db === "sqlite") {
+	define("_TRAVIS_DATABASE_USERNAME", "");
+	define("_TRAVIS_DATABASE_PASSWORD", "");
 } else {
 	die("Unsupported Database Option");
 }
@@ -61,10 +64,15 @@ class ShimmieInstallerTest extends WebTestCase {
 
 		$this->setField("database_type", $db);
 		$this->assertField("database_type", $db);
-		$this->assertField("database_host", "localhost");
-		$this->setField("database_user", $username);
-		$this->setField("database_password", $password);
-		$this->assertField("database_name", "shimmie");
+		if ($db === "sqlite") {
+			$this->setField("database_name", "shimmie.sqlite");
+		}
+		else {
+			$this->assertField("database_host", "localhost");
+			$this->setField("database_user", $username);
+			$this->setField("database_password", $password);
+			$this->assertField("database_name", "shimmie");
+		}
 		$this->clickSubmit("Go!");
 
 		if (!$this->assertText("Installation Succeeded!")) {

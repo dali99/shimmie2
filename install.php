@@ -162,7 +162,6 @@ function ask_questions() { // {{{
 	if(
 		!in_array("mysql", $drivers) &&
 		!in_array("pgsql", $drivers) &&
-
 		!in_array("sqlite", $drivers)
 	) {
 		$errors[] = "
@@ -338,31 +337,33 @@ EOD;
 		$db->execute("INSERT INTO config(name, value) VALUES('db_version', 11)");
 		$db->commit();
 	}
-	catch(PDOException $e)
-	{
+	catch(PDOException $e) {
+		$dsn = DATABASE_DSN;
 		print <<<EOD
 			<div id="installer">
 				<h1>Shimmie Installer</h1>
 				<h3>Database Error:</h3>
 				<p>An error occured while trying to create the database tables necessary for Shimmie.</p>
 				<p>Please check and ensure that the database configuration options are all correct.</p>
+				<p>Database: {$dsn}</p>
+				<p>Message: {$e->getMessage()}</p>
 				<br/><br/>
 			</div>
 EOD;
-		exit($e->getMessage());
+		exit;
 	}
-	catch (Exception $e)
-	{
+	catch (Exception $e) {
 		print <<<EOD
 			<div id="installer">
 				<h1>Shimmie Installer</h1>
 				<h3>Unknown Error:</h3>
 				<p>An unknown error occured while trying to create the database tables necessary for Shimmie.</p>
 				<p>Please check the server log files for more information.</p>
+				<p>Message: {$e->getMessage()}</p>
 				<br/><br/>
 			</div>
 EOD;
-		exit($e->getMessage());
+		exit;
 	}
 
 } // }}}
