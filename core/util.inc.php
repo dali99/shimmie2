@@ -301,8 +301,8 @@ function validate_input($inputs) {
 			$outputs[$key] = $value;
 		}
 		else if(in_array('user_class', $flags)) {
-			global $_user_classes;
-			if(!array_key_exists($value, $_user_classes)) {
+			global $_shm_user_classes;
+			if(!array_key_exists($value, $_shm_user_classes)) {
 				throw new InvalidInput("Invalid user class: ".html_escape($class));
 			}
 			$outputs[$key] = $value;
@@ -700,66 +700,6 @@ function getExtension ($mime_type){
 }
 
 /**
- * @private
- */
-function _version_check() {
-	$min_version = "5.4.8";
-	if(version_compare(PHP_VERSION, $min_version) == -1) {
-		print "
-Currently SCore Engine doesn't support versions of PHP lower than $min_version --
-if your web host is running an older version, they are dangerously out of
-date and you should plan on moving elsewhere.
-";
-		exit;
-	}
-}
-
-/**
- * @private
- */
-function is_cli() {
-	return (PHP_SAPI === 'cli');
-}
-
-
-$_execs = 0;
-/**
- * $db is the connection object
- *
- * @private
- */
-function _count_execs($db, $sql, $inputarray) {
-	global $_execs;
-	if ((defined('DEBUG_SQL') && DEBUG_SQL === true) || (!defined('DEBUG_SQL') && @$_GET['DEBUG_SQL'])) {
-		$fp = @fopen("data/sql.log", "a");
-		if($fp) {
-			if(isset($inputarray) && is_array($inputarray)) {
-				fwrite($fp, preg_replace('/\s+/msi', ' ', $sql)." -- ".join(", ", $inputarray)."\n");
-			}
-			else {
-				fwrite($fp, preg_replace('/\s+/msi', ' ', $sql)."\n");
-			}
-			fclose($fp);
-		}
-		else {
-			# WARNING:
-			# SQL queries happen before the event system is fully initialised
-			# (eg, "select theme from config" happens before "load themes"),
-			# so using the event system to report an error will create some
-			# really weird looking bugs.
-			#
-			#log_error("core", "failed to open sql.log for appending");
-		}
-	}
-	if (!is_array($inputarray)) $_execs++;
-	# handle 2-dimensional input arrays
-	else if (is_array(reset($inputarray))) $_execs += sizeof($inputarray);
-	else $_execs++;
-	# in PHP4.4 and PHP5, we need to return a value by reference
-	$null = null; return $null;
-}
-
-/**
  * Compare two Block objects, used to sort them before being displayed
  *
  * @param Block $a
@@ -837,35 +777,6 @@ function get_session_ip(Config $config) {
 	return $addr;
 }
 
-/**
- * similar to $_COOKIE[$name], but $name has the site-wide cookie
- * prefix prepended to it, eg username -> shm_username, to prevent
- * conflicts from multiple installs within one domain.
- */
-function get_prefixed_cookie(/*string*/ $name) {
-	$full_name = COOKIE_PREFIX."_".$name;
-	if(isset($_COOKIE[$full_name])) {
-		return $_COOKIE[$full_name];
-	}
-	else {
-		return null;
-	}
-}
-
-/**
- * The counterpart for get_prefixed_cookie, this works like php's
- * setcookie method, but prepends the site-wide cookie prefix to
- * the $name argument before doing anything.
- *
- * @param string $name
- * @param string $value
- * @param int $time
- * @param string $path
- */
-function set_prefixed_cookie($name, $value, $time, $path) {
-	$full_name = COOKIE_PREFIX."_".$name;
-	setcookie($full_name, $value, $time, $path);
-}
 
 /**
  * Set (or extend) a flash-message cookie.
@@ -880,13 +791,14 @@ function set_prefixed_cookie($name, $value, $time, $path) {
  * @param string $type
  */
 function flash_message(/*string*/ $text, /*string*/ $type="info") {
-	$current = get_prefixed_cookie("flash_message");
+	global $page;
+	$current = $page->get_cookie("flash_message");
 	if($current) {
 		$text = $current . "\n" . $text;
 	}
 	# the message should be viewed pretty much immediately,
 	# so 60s timeout should be more than enough
-	set_prefixed_cookie("flash_message", $text, time()+60, "/");
+	$page->add_cookie("flash_message", $text, time()+60, "/");
 }
 
 /**
@@ -900,6 +812,7 @@ function flash_message(/*string*/ $text, /*string*/ $type="info") {
  * @return string
  */
 function get_base_href() {
+	if(defined("BASE_HREF")) return BASE_HREF;
 	$possible_vars = array('SCRIPT_NAME', 'PHP_SELF', 'PATH_INFO', 'ORIG_PATH_INFO');
 	$ok_var = null;
 	foreach($possible_vars as $var) {
@@ -1074,7 +987,6 @@ function findHeader ($headers, $name) {
 	return $header;
 }
 
-$_included = array();
 /**
  * Get the active contents of a .php file
  *
@@ -1082,13 +994,13 @@ $_included = array();
  * @return string|null
  */
 function manual_include($fname) {
-	global $_included;
+	static $included = array();
 
 	if(!file_exists($fname)) return null;
 
-	if(in_array($fname, $_included)) return null;
+	if(in_array($fname, $included)) return null;
 
-	$_included[] = $fname;
+	$included[] = $fname;
 
 	print "$fname\n";
 
@@ -1104,10 +1016,6 @@ function manual_include($fname) {
 
 	// @include_once is used for user-creatable config files
 	$text = preg_replace('/@include_once "(.*)";/e', "manual_include('$1')", $text);
-
-	// wibble the defines for HipHop's sake
-	$text = str_replace('function _d(', '// function _messed_d(', $text);
-	$text = preg_replace('/_d\("(.*)", (.*)\);/', 'if(!defined("$1")) define("$1", $2);', $text);
 
 	return $text;
 }
@@ -1144,7 +1052,8 @@ define("SCORE_LOG_NOTSET", 0);
 function log_msg(/*string*/ $section, /*int*/ $priority, /*string*/ $message, $flash=false, $args=array()) {
 	send_event(new LogEvent($section, $priority, $message, $args));
 	$threshold = defined("CLI_LOG_LEVEL") ? CLI_LOG_LEVEL : 0;
-	if(is_cli() && ($priority >= $threshold)) {
+
+	if((PHP_SAPI === 'cli') && ($priority >= $threshold)) {
 		print date("c")." $section: $message\n";
 	}
 	if($flash === true) {
@@ -1163,24 +1072,23 @@ function log_error(   /*string*/ $section, /*string*/ $message, $flash=false, $a
 function log_critical(/*string*/ $section, /*string*/ $message, $flash=false, $args=array()) {log_msg($section, SCORE_LOG_CRITICAL, $message, $flash, $args);}
 
 
-$_request_id = null;
 /**
  * Get a unique ID for this request, useful for grouping log messages.
  *
  * @return null|string
  */
 function get_request_id() {
-	global $_request_id;
-	if(!$_request_id) {
+	static $request_id = null;
+	if(!$request_id) {
 		// not completely trustworthy, as a user can spoof this
 		if(@$_SERVER['HTTP_X_VARNISH']) {
-			$_request_id = $_SERVER['HTTP_X_VARNISH'];
+			$request_id = $_SERVER['HTTP_X_VARNISH'];
 		}
 		else {
-			$_request_id = "P" . uniqid();
+			$request_id = "P" . uniqid();
 		}
 	}
-	return $_request_id;
+	return $request_id;
 }
 
 
@@ -1405,28 +1313,94 @@ function path_to_tags($path) {
 \* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
 /** @private */
-$_event_listeners = array();
+global $_shm_event_listeners;
+$_shm_event_listeners = array();
 
-/**
- * Register an Extension.
- *
- * @param Extension $extension
- * @param int $pos
- * @param array $events
- */
-function add_event_listener(Extension $extension, $pos=50, $events=array()) {
-	global $_event_listeners;
-	$pos *= 100;
-	foreach($events as $event) {
-		while(isset($_event_listeners[$event][$pos])) {
-			$pos += 1;
+function _load_event_listeners() {
+	global $_shm_event_listeners;
+
+	ctx_log_start("Loading extensions");
+
+	$cache_path = data_path("cache/shm_event_listeners.php");
+	if(COMPILE_ELS && file_exists($cache_path)) {
+		require_once($cache_path);
+	}
+	else {
+		_set_event_listeners();
+
+		if(COMPILE_ELS) {
+			_dump_event_listeners($_shm_event_listeners, $cache_path);
 		}
-		$_event_listeners[$event][$pos] = $extension;
+	}
+
+	ctx_log_endok();
+}
+
+function _set_event_listeners() {
+	global $_shm_event_listeners;
+	$_shm_event_listeners = array();
+
+	foreach(get_declared_classes() as $class) {
+		$rclass = new ReflectionClass($class);
+		if($rclass->isAbstract()) {
+			// don't do anything
+		}
+		elseif(is_subclass_of($class, "Extension")) {
+			$extension = new $class();
+			$extension->i_am($extension);
+
+			// skip extensions which don't support our current database
+			if(property_exists($extension, 'db_support')) {
+				global $database;
+				if(!in_array($database->get_driver_name(), $extension->db_support)) {
+					continue;
+				}
+			}
+
+			foreach(get_class_methods($extension) as $method) {
+				if(substr($method, 0, 2) == "on") {
+					$event = substr($method, 2) . "Event";
+					$pos = $extension->get_priority() * 100;
+					while(isset($_shm_event_listeners[$event][$pos])) {
+						$pos += 1;
+					}
+					$_shm_event_listeners[$event][$pos] = $extension;
+				}
+			}
+		}
 	}
 }
 
+function _dump_event_listeners($event_listeners, $path) {
+	$p = "<"."?php\n";
+
+	foreach(get_declared_classes() as $class) {
+		$rclass = new ReflectionClass($class);
+		if($rclass->isAbstract()) {}
+		elseif(is_subclass_of($class, "Extension")) {
+			$p .= "\$$class = new $class(); ";
+			$p .= "\${$class}->i_am(\$$class);\n";
+		}
+	}
+
+	$p .= "\$_shm_event_listeners = array(\n";
+	foreach($event_listeners as $event => $listeners) {
+		$p .= "\t'$event' => array(\n";
+		foreach($listeners as $id => $listener) {
+			$p .= "\t\t$id => \$".get_class($listener).",\n";
+		}
+		$p .= "\t),\n";
+	}
+	$p .= ");\n";
+
+	$p .= "?".">";
+	file_put_contents($path, $p);
+}
+
+
 /** @private */
-$_event_count = 0;
+global $_shm_event_count;
+$_shm_event_count = 0;
 
 /**
  * Send an event to all registered Extensions.
@@ -1434,13 +1408,13 @@ $_event_count = 0;
  * @param Event $event
  */
 function send_event(Event $event) {
-	global $_event_listeners, $_event_count;
-	if(!isset($_event_listeners[get_class($event)])) return;
+	global $_shm_event_listeners, $_shm_event_count;
+	if(!isset($_shm_event_listeners[get_class($event)])) return;
 	$method_name = "on".str_replace("Event", "", get_class($event));
 
 	ctx_log_start(get_class($event));
 	// SHIT: http://bugs.php.net/bug.php?id=35106
-	$my_event_listeners = $_event_listeners[get_class($event)];
+	$my_event_listeners = $_shm_event_listeners[get_class($event)];
 	ksort($my_event_listeners);
 	foreach($my_event_listeners as $listener) {
 		ctx_log_start(get_class($listener));
@@ -1449,7 +1423,7 @@ function send_event(Event $event) {
 		}
 		ctx_log_endok();
 	}
-	$_event_count++;
+	$_shm_event_count++;
 	ctx_log_endok();
 }
 
@@ -1461,7 +1435,7 @@ function send_event(Event $event) {
 // SHIT by default this returns the time as a string. And it's not even a
 // string representation of a number, it's two numbers separated by a space.
 // What the fuck were the PHP developers smoking.
-$_load_start = microtime(true);
+$_shm_load_start = microtime(true);
 
 /**
  * Collects some debug information (execution time, memory usage, queries, etc)
@@ -1470,7 +1444,7 @@ $_load_start = microtime(true);
  * @return string debug info to add to the page.
  */
 function get_debug_info() {
-	global $config, $_event_count, $database, $_execs, $_load_start;
+	global $config, $_shm_event_count, $database, $_shm_load_start;
 
 	$i_mem = sprintf("%5.2f", ((memory_get_peak_usage(true)+512)/1024)/1024);
 
@@ -1480,15 +1454,15 @@ function get_debug_info() {
 	else {
 		$commit = " (".$config->get_string("commit_hash").")";
 	}
-	$time = sprintf("%.2f", microtime(true) - $_load_start);
+	$time = sprintf("%.2f", microtime(true) - $_shm_load_start);
 	$dbtime = sprintf("%.2f", $database->dbtime);
 	$i_files = count(get_included_files());
 	$hits = $database->cache->get_hits();
 	$miss = $database->cache->get_misses();
 
 	$debug = "<br>Took $time seconds (db:$dbtime) and {$i_mem}MB of RAM";
-	$debug .= "; Used $i_files files and $_execs queries";
-	$debug .= "; Sent $_event_count events";
+	$debug .= "; Used $i_files files and {$database->query_count} queries";
+	$debug .= "; Sent $_shm_event_count events";
 	$debug .= "; $hits cache hits and $miss misses";
 	$debug .= "; Shimmie version ". VERSION . $commit; // .", SCore Version ". SCORE_VERSION;
 
@@ -1504,10 +1478,7 @@ function score_assert_handler($file, $line, $code, $desc = null) {
 	print("</pre>");
 	*/
 }
-//assert_options(ASSERT_ACTIVE, 1);
-assert_options(ASSERT_WARNING, 0);
-assert_options(ASSERT_QUIET_EVAL, 1);
-assert_options(ASSERT_CALLBACK, 'score_assert_handler');
+
 
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *\
 * Request initialisation stuff                                              *
@@ -1515,12 +1486,16 @@ assert_options(ASSERT_CALLBACK, 'score_assert_handler');
 
 /** @privatesection */
 
-/**
- * @param array|string $arr
- * @return array|string
- */
-function _stripslashes_r($arr) {
-	return is_array($arr) ? array_map('_stripslashes_r', $arr) : stripslashes($arr);
+function _version_check() {
+	$min_version = "5.4.8";
+	if(version_compare(PHP_VERSION, $min_version) == -1) {
+		print "
+Currently SCore Engine doesn't support versions of PHP lower than $min_version --
+if your web host is running an older version, they are dangerously out of
+date and you should plan on moving elsewhere.
+";
+		exit;
+	}
 }
 
 function _sanitise_environment() {
@@ -1530,11 +1505,15 @@ function _sanitise_environment() {
 
 	if(DEBUG) {
 		error_reporting(E_ALL);
+		assert_options(ASSERT_ACTIVE, 1);
+		assert_options(ASSERT_BAIL, 1);
+		assert_options(ASSERT_WARNING, 0);
+		assert_options(ASSERT_QUIET_EVAL, 1);
+		assert_options(ASSERT_CALLBACK, 'score_assert_handler');
 	}
 
 	if(CONTEXT) {
 		ctx_set_log(CONTEXT);
-		ctx_log_start(@$_SERVER["REQUEST_URI"], true, true);
 	}
 
 	if(COVERAGE) {
@@ -1542,18 +1521,9 @@ function _sanitise_environment() {
 		register_shutdown_function("_end_coverage");
 	}
 
-	assert_options(ASSERT_ACTIVE, 1);
-	assert_options(ASSERT_BAIL, 1);
-
 	ob_start();
 
-	if(get_magic_quotes_gpc()) {
-		$_GET = _stripslashes_r($_GET);
-		$_POST = _stripslashes_r($_POST);
-		$_COOKIE = _stripslashes_r($_COOKIE);
-	}
-
-	if(is_cli()) {
+	if(PHP_SAPI === 'cli') {
 		if(isset($_SERVER['REMOTE_ADDR'])) {
 			die("CLI with remote addr? Confused, not taking the risk.");
 		}
@@ -1561,6 +1531,7 @@ function _sanitise_environment() {
 		$_SERVER['HTTP_HOST'] = "<cli command>";
 	}
 }
+
 
 /**
  * @param string $_theme
@@ -1578,73 +1549,6 @@ function _get_themelet_files($_theme) {
 	return array_merge($base_themelets, $ext_themelets, $custom_themelets);
 }
 
-function _set_event_listeners($classes) {
-	global $_event_listeners;
-	$_event_listeners = array();
-
-	foreach($classes as $class) {
-		$rclass = new ReflectionClass($class);
-		if($rclass->isAbstract()) {
-			// don't do anything
-		}
-		elseif(is_subclass_of($class, "Extension")) {
-			$c = new $class();
-			$c->i_am($c);
-			$my_events = array();
-			foreach(get_class_methods($c) as $method) {
-				if(substr($method, 0, 2) == "on") {
-					$my_events[] = substr($method, 2) . "Event";
-				}
-			}
-			add_event_listener($c, $c->get_priority(), $my_events);
-		}
-	}
-}
-
-function _dump_event_listeners($event_listeners, $path) {
-	$p = "<"."?php\n";
-
-	foreach(get_declared_classes() as $class) {
-		$rclass = new ReflectionClass($class);
-		if($rclass->isAbstract()) {}
-		elseif(is_subclass_of($class, "Extension")) {
-			$p .= "\$$class = new $class(); ";
-			$p .= "\${$class}->i_am(\$$class);\n";
-		}
-	}
-
-	$p .= "\$_event_listeners = array(\n";
-	foreach($event_listeners as $event => $listeners) {
-		$p .= "\t'$event' => array(\n";
-		foreach($listeners as $id => $listener) {
-			$p .= "\t\t$id => \$".get_class($listener).",\n";
-		}
-		$p .= "\t),\n";
-	}
-	$p .= ");\n";
-
-	$p .= "?".">";
-	file_put_contents($path, $p);
-}
-
-function _load_extensions() {
-	global $_event_listeners;
-
-	ctx_log_start("Loading extensions");
-
-	if(COMPILE_ELS && file_exists("data/cache/event_listeners.php")) {
-		require_once("data/cache/event_listeners.php");
-	}
-	else {
-		_set_event_listeners(get_declared_classes());
-
-		if(COMPILE_ELS) {
-			_dump_event_listeners($_event_listeners, data_path("cache/event_listeners.php"));
-		}
-	}
-
-	ctx_log_endok();
-}
 
 /**
  * Used to display fatal errors to the web user.
@@ -1705,10 +1609,10 @@ function _decaret($str) {
  * @return User
  */
 function _get_user() {
-	global $config;
+	global $config, $page;
 	$user = null;
-	if(get_prefixed_cookie("user") && get_prefixed_cookie("session")) {
-	    $tmp_user = User::by_session(get_prefixed_cookie("user"), get_prefixed_cookie("session"));
+	if($page->get_cookie("user") && $page->get_cookie("session")) {
+	    $tmp_user = User::by_session($page->get_cookie("user"), $page->get_cookie("session"));
 		if(!is_null($tmp_user)) {
 			$user = $tmp_user;
 		}

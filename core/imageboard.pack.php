@@ -23,10 +23,6 @@
 * Classes                                                                   *
 \* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
-$tag_n = 0; // temp hack
-$_flexihash = null;
-$_fh_last_opts = null;
-$order_sql = null; // this feels ugly
 
 require_once "lib/flexihash.php";
 
@@ -40,6 +36,9 @@ require_once "lib/flexihash.php";
  * other supported upload type.
  */
 class Image {
+	private static $tag_n = 0; // temp hack
+	public static $order_sql = null; // this feels ugly
+
 	/** @var null|int */
 	public $id = null;
 
@@ -147,7 +146,7 @@ class Image {
 		assert('is_numeric($start)');
 		assert('is_numeric($limit)');
 		assert('is_array($tags)');
-		global $database, $user, $config, $order_sql;
+		global $database, $user, $config;
 
 		$images = array();
 
@@ -167,7 +166,7 @@ class Image {
 
 		if(!$result) {
 			$querylet = Image::build_search_querylet($tags);
-			$querylet->append(new Querylet(" ORDER BY ".($order_sql ?: "images.".$config->get_string("index_order"))));
+			$querylet->append(new Querylet(" ORDER BY ".(Image::$order_sql ?: "images.".$config->get_string("index_order"))));
 			$querylet->append(new Querylet(" LIMIT :limit OFFSET :offset", array("limit"=>$limit, "offset"=>$start)));
 			#var_dump($querylet->sql); var_dump($querylet->variables);
 			$result = $database->execute($querylet->sql, $querylet->variables);
@@ -176,7 +175,7 @@ class Image {
 		while($row = $result->fetch()) {
 			$images[] = new Image($row);
 		}
-		$order_sql = null;
+		Image::$order_sql = null;
 		return $images;
 	}
 
@@ -688,16 +687,17 @@ class Image {
 			$tmpl = $plte->link;
 		}
 
-		global $_flexihash, $_fh_last_opts;
+		static $flexihash = null;
+		static $fh_last_opts = null;
 		$matches = array();
 		if(preg_match("/(.*){(.*)}(.*)/", $tmpl, $matches)) {
 			$pre = $matches[1];
 			$opts = $matches[2];
 			$post = $matches[3];
 
-			if($opts != $_fh_last_opts) {
-				$_fh_last_opts = $opts;
-				$_flexihash = new Flexihash();
+			if($opts != $fh_last_opts) {
+				$fh_last_opts = $opts;
+				$flexihash = new Flexihash();
 				foreach(explode(",", $opts) as $opt) {
 					$parts = explode("=", $opt);
 					$parts_count = count($parts);
@@ -711,11 +711,11 @@ class Image {
 						$opt_val = $parts[0];
 						$opt_weight = 1;
 					}
-					$_flexihash->addTarget($opt_val, $opt_weight);
+					$flexihash->addTarget($opt_val, $opt_weight);
 				}
 			}
 
-			$choice = $_flexihash->lookup($pre.$post);
+			$choice = $flexihash->lookup($pre.$post);
 			$tmpl = $pre.$choice.$post;
 		}
 
@@ -967,13 +967,10 @@ class Image {
 		$sql = "0";
 		$terms = array();
 		foreach($tag_querylets as $tq) {
-			global $tag_n;
 			$sign = $tq->positive ? "+" : "-";
-			//$sql .= " $sign (tag LIKE :tag$tag_n)";
-			$sql .= ' '.$sign.' (tag LIKE :tag'.$tag_n.')';
-			//$terms["tag$tag_n"] = $tq->tag;
-			$terms['tag'.$tag_n] = $tq->tag;
-			$tag_n++;
+			$sql .= ' '.$sign.' (tag LIKE :tag'.Image::$tag_n.')';
+			$terms['tag'.Image::$tag_n] = $tq->tag;
+			Image::$tag_n++;
 
 			if($sign === "+") $positive_tag_count++;
 			else $negative_tag_count++;
@@ -1084,7 +1081,7 @@ class Image {
 				WHERE 1=0
 			");
 		}
-		$tag_n = 0;
+		Image::$tag_n = 0;
 		return $query;
 	}
 }

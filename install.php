@@ -14,17 +14,7 @@
 
 ob_start();
 
-/*
-<!--
-- install.php (c) Shish et all. 2007-2013
--
-- Initialise the database, check that folder
-- permissions are set properly.
--
-- This file should be independant of the database
-- and other such things that aren't ready yet
--->
-*/
+date_default_timezone_set('UTC');
 ?>
 <!DOCTYPE html>
 <html>
@@ -33,7 +23,7 @@ ob_start();
 		<title>Shimmie Installation</title>
 		<link rel="shortcut icon" href="favicon.ico" />
 		<link rel='stylesheet' href='lib/shimmie.css' type='text/css'>
-		<script type="text/javascript" src="lib/jquery-1.7.1.min.js"></script>
+		<script type="text/javascript" src="lib/jquery-1.11.0.min.js"></script>
 	</head>
 	<body>
 <?php if(false) { ?>
@@ -272,7 +262,7 @@ function create_tables() { // {{{
 				<br/><br/>
 			</div>
 EOD;
-			exit;
+			exit(2);
 		}
 
 		$db->create_table("aliases", "
@@ -350,7 +340,7 @@ EOD;
 				<br/><br/>
 			</div>
 EOD;
-		exit;
+		exit(3);
 	}
 	catch (Exception $e) {
 		print <<<EOD
@@ -363,9 +353,8 @@ EOD;
 				<br/><br/>
 			</div>
 EOD;
-		exit;
+		exit(4);
 	}
-
 } // }}}
 
 function insert_defaults() { // {{{
@@ -388,10 +377,10 @@ function insert_defaults() { // {{{
 			<h3>Database Error:</h3>
 			<p>An error occured while trying to insert data into the database.</p>
 			<p>Please check and ensure that the database configuration options are all correct.</p>
-			<br/><br/>
+			<p>{$e->getMessage()}</p>
 		</div>
 EOD;
-		exit($e->getMessage());
+		exit(5);
 	}
 	catch (Exception $e)
 	{
@@ -401,10 +390,10 @@ EOD;
 			<h3>Unknown Error:</h3>
 			<p>An unknown error occured while trying to insert data into the database.</p>
 			<p>Please check the server log files for more information.</p>
-			<br/><br/>
+			<p>{$e->getMessage()}</p>
 		</div>
 EOD;
-		exit($e->getMessage());
+		exit(6);
 	}
 } // }}}
 
@@ -436,7 +425,7 @@ function build_dirs() { // {{{
 			<br/><br/>
 		</div>
 		";
-		exit;
+		exit(7);
 	}
 } // }}}
 
@@ -460,7 +449,7 @@ function write_config() { // {{{
 		    folder manually. Make sure that when you save it, there is no whitespace
 		    before the "&lt;?php" or after the "?&gt;"
 
-		    <p><textarea cols="80" rows="2">$file_content</textarea>
+		    <p><textarea cols="80" rows="2">$h_file_content</textarea>
 
 		    <p>Once done, <a href="index.php">Click here to Continue</a>.
 			<br/><br/>

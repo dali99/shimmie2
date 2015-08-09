@@ -32,8 +32,8 @@ class Blotter extends Extension {
 					important SCORE_BOOL NOT NULL DEFAULT SCORE_BOOL_N
 					");
 			// Insert sample data:
-			$database->execute("INSERT INTO blotter (id, entry_date, entry_text, important) VALUES (?, now(), ?, ?)", 
-					array(NULL, "Installed the blotter extension!", "Y"));
+			$database->execute("INSERT INTO blotter (entry_date, entry_text, important) VALUES (now(), ?, ?)",
+					array("Installed the blotter extension!", "Y"));
 			log_info("blotter", "Installed tables for blotter extension.");
 			$config->set_int("blotter_version", 1);
 		}
@@ -41,7 +41,6 @@ class Blotter extends Extension {
 		$config->set_default_int("blotter_recent", 5);
 		$config->set_default_string("blotter_color", "FF0000");
 		$config->set_default_string("blotter_position", "subheading");
-
 	}
 
 	public function onSetupBuilding(SetupBuildingEvent $event) {
