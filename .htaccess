@@ -31,8 +31,6 @@
 	php_flag magic_quotes_runtime 0
 </IfModule>
 
-DefaultType image/jpeg
-
 <IfModule mod_expires.c>
 	ExpiresActive On
 	<FilesMatch "([0-9a-f]{32}|\.(gif|jpe?g|png|css|js))$">
@@ -49,3 +47,15 @@ DefaultType image/jpeg
 	AddOutputFilterByType DEFLATE text/html text/plain text/xml text/css
 	AddOutputFilterByType DEFLATE application/x-javascript application/javascript
 </ifmodule>
+
+AddType audio/mp4      f4a f4b m4a
+AddType audio/ogg      oga ogg opus
+AddType image/jpeg     jpg jpeg
+AddType image/bmp      bmp
+AddType image/svg+xml  svg svgz
+AddType image/x-icon   ico ani cur
+AddType image/webp     webp
+AddType video/mp4      f4v f4p m4v mp4
+AddType video/ogg      ogv
+AddType video/webm     webm
+AddType video/x-flv    flv
