@@ -31,14 +31,20 @@ class WikiPage {
 	/** @var int|string */
 	public $id;
 
-	var $owner_id;
-	var $owner_ip;
-	var $date;
+	/** @var int */
+	public $owner_id;
+
+	/** @var string */
+	public $owner_ip;
+
+	/** @var string */
+	public $date;
 
 	/** @var string */
 	public $title;
 
-	var $revision;
+	/** @var int */
+	public $revision;
 
 	/** @var bool */
 	public $locked;
@@ -220,11 +226,11 @@ class Wiki extends Extension {
 	private function get_page($title, $revision=-1) {
 		global $database;
 		// first try and get the actual page
-		$row = $database->get_row("
+		$row = $database->get_row($database->scoreql_to_sql("
 				SELECT *
 				FROM wiki_pages
-				WHERE title LIKE :title
-				ORDER BY revision DESC",
+				WHERE SCORE_STRNORM(title) LIKE SCORE_STRNORM(:title)
+				ORDER BY revision DESC"),
 				array("title"=>$title));
 
 		// fall back to wiki:default
